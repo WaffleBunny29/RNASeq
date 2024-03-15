@@ -1,0 +1,586 @@
+---
+title: "**Mycobacterium** ***abscessus***"
+author: "Ranjitha Sekhar"
+
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    theme: bootstrap
+    center: true
+---
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr) 
+library(kableExtra)
+```
+
+&nbsp;
+&nbsp;
+
+# Project Design
+ 
+* Transcriptomic analysis of non-model pathogen [doi:10.1186/s12864-016-2868-y]
+
+* Erythromycin on Mycobacterium *abscessus*
+* Kanamycin on Mycobacterium *abscessus*
+* Control
+* 2 Replicates of each
+
+* Reference Draft Genome 17 Contigs Acc:AGQU01000001.1
+* Note: Pipeline is only inspired by the paper data such as select genes and genome are arbitrary used to demonstrate Bioinformatic tools and scripts alone.
+
+# Bioinformatic Tools {.tabset .tabset-fade}
+
+## Reference
+#### Prokka
+#### Genovi
+#### MauveAligner
+#### BLAST
+
+***
+
+## Quality
+#### FastQC; MultiQC
+#### Bbduk; Cutadapt; Trimmomatic
+#### Python
+
+***
+
+## Mapping
+#### Bowtie2
+#### Samtools
+#### Bwa
+
+***
+
+## Quantification
+#### Subread (FeatureCounts)
+#### Agat
+
+***
+
+## DGE
+#### DeSeq (R)
+#### Limma (R)
+
+***
+
+## Phylogeny
+#### Clustal Omega
+#### Biopython
+
+***
+
+## Pathway
+#### ClusterProfiler
+#### EggNog
+
+***
+
+## Misc
+#### SSH; PBS (Computerome)
+#### Rmarkdown; Latex
+#### Conda/Mamba
+#### Git
+
+***
+
+# Bioinformatic Pipeline {.tabset .tabset-fade}
+
+## Genome
+#### Visualization
+```{r, echo=FALSE, out.width = '100%', fig.align='center'}
+knitr::include_graphics("genovi.png")
+```
+
+#### Whole Genome Alignment 
+```{r, echo=FALSE, out.width = '100%', fig.align='center'}
+knitr::include_graphics("WGA.jpg")
+```
+
+## % rRNA
+
+**Purpose:** Data tidying.<br />
+**Inference:** Percent contamination higher than ideal (<=10%). <br /> 
+**Ref:** https://www.biostars.org/p/415008/ <br />
+
+```{r, echo=FALSE}
+rRNA <- read.table('contaminants', header = TRUE, sep = ';', stringsAsFactors = TRUE)
+knitr::kable(rRNA, "html") %>% kable_styling(full_width = FALSE, position = 'center')
+```
+
+
+&nbsp;
+
+***
+
+
+## PCA 
+**Purpose:** Scatter plot, Check for batch effect.<br />
+
+```{r, echo=FALSE, out.width = '200%', fig.align='center', fig.height=7}
+knitr::include_graphics("PCA_Scatter.png")
+```
+
+&nbsp;
+
+***
+
+## DEG: Volcano Plots 
+**Purpose:** Visualization of filtered/unfiltered gene up-regulation.
+
+#### Erythromycin vs Control Unfiltered
+$$log_2FoldChange(\frac{Erythromycin}{Control})$$
+&nbsp;
+
+```{r, echo=FALSE, out.width = '100%', fig.align='center'}
+knitr::include_graphics("Ordered_Erythromycin_vs_Control.png")
+```
+
+&nbsp;
+
+#### Erythromycin vs Control Filtered 
+**Note:** Filtered for genes of interest.<br />
+$$log_2FoldChange(\frac{Erythromycin}{Control})$$
+```{r, echo=FALSE, out.width = '100%', fig.align='center'}
+knitr::include_graphics("Volcano_Erythromycin_vs_Control.png")
+```
+&nbsp;
+
+#### Kanamycin vs Control 
+$$log_2FoldChange(\frac{Kanamycin}{Control})$$
+```{r, echo=FALSE, out.width = '100%', fig.align='center'}
+knitr::include_graphics("Ordered_Kanamycin_vs_Control.png")
+```
+&nbsp;
+
+
+***
+
+## DEG: Heatmaps
+**Purpose:** To provide global overview of gene expression.<br />
+
+#### MAB vs Antibiotics 
+
+```{r, echo=FALSE, out.width = '200%', fig.align='center'}
+knitr::include_graphics("Heatmap.png")
+```
+&nbsp;
+
+***
+
+## Phylogeny
+
+#### Aminoglycoside 2'-N-acetyltransferase
+**Note:** Genes grouped together on basis of similarity just to display bioinformatic method.<br />
+
+```{r, echo=FALSE, out.width = '100%', fig.align='center'}
+knitr::include_graphics("tree.png")
+```
+&nbsp;
+
+***
+
+## Pathway Enrichment
+```{r, echo=FALSE, out.width = '70%', fig.align='center'}
+knitr::include_graphics("KO_dotplot.png")
+```
+&nbsp;
+
+***
+
+# Scripts {.tabset .tabset-fade}
+
+## Command Line
+```{bash, echo=TRUE, eval=FALSE}
+conda install mamba -n base -c conda-forge
+
+mauveAligner --output=MAB.mauve --output-alignment=MAB.alignment 
+ATCC_19977.gbk ATCC_19977.sml draft_genome.fasta draft_genome.sml
+
+mamba install -c conda-forge -c bioconda -c defaults 
+prokka --proteins ATCC_19977.gbk --outdir prokka_output --prefix MAB draft_genome.fasta
+
+agat_convert_sp_gff2gtf.pl –gff CH_I.gff -o CH_I_agat.gtf 
+sed 's/\(gene_id "[^"]*\).*/\1"/' CH_I_agat.gtf > infantis.gtf 
+
+genovi -i MAB.gbk --title 'Mycobacterium abscessus' --background white -cs pastel 
+--title_position top --status draft  -te --size --italic_words 2
+
+Fastqc C1_fastq.qz
+
+cutadapt -a AGATCGGAAGAG -o C1_a.fastq.gz C1.fastq.gz
+bbduk.sh in=C1_a.fastq.gz out=C1_clean.fq ref=rRNA_seq.txt
+
+bowtie2-build draft_genome.fasta bowtie_indices/MAB
+bowtie2-inspect -n MAB
+bowtie2 -x bowtie_indices/MAB -U C1_clean.fastq.gz -S C1_aligned.sam
+
+samtools view -S -b C1_aligned.sam > C1_aligned.bam
+
+featureCounts -a modified_annotation.gtf -o C2_counts.txt C2_aligned.bam
+clustalw multiple_sequence.txt -align
+```
+## Python
+#### Extract_coordinates.py
+```{python, python.reticulate = FALSE, echo=TRUE, eval=FALSE, Title='blah'}
+
+#!/usr/bin/env python3
+
+import re
+inf = str(input('Enter gff annotation file:\n'))
+f = open(inf,'r')
+temp = []
+for line in f:
+    check = re.search('ribosomal RNA', line)
+    if check:
+        line =line.replace(';','\t').split('\t')
+        temp.append(line[0])
+        temp.append(line[3])
+        temp.append(line[4])
+        temp.append(line[-1])
+outf = inf[0:-4]+'_coordinates.txt'
+o = open(outf, 'w')
+for i in temp:
+    if '\n' not in i:
+        o.write(i+'\t')
+    else:
+        o.write(i)
+f.close()
+o.close()
+```
+#### CDS_extract.py
+```{python, python.reticulate = FALSE, echo=TRUE, eval=FALSE}
+
+#!/usr/bin/env python3
+
+## This section will store the coordinates  
+file_dict = dict()
+count=1
+co_in = str(input('Enter coordinate filename with extension: '))
+infile = open(co_in,'r')
+for line in infile:
+    line = line.rstrip().split('\t')
+    key=line[0] 
+    start=line[1]
+    stop=line[2]
+    name=line[-1]
+    if key not in file_dict:
+        file_dict[key] = {}
+        file_dict[key]['start'] = start
+        file_dict[key]['stop'] = stop
+        file_dict[key][''] = name
+    else:
+        key=str(count)+key
+        count+=1
+        file_dict[key] = {}
+        file_dict[key]['start'] = start
+        file_dict[key]['stop'] = stop
+        file_dict[key][''] = name     
+infile.close()
+
+#This section will extract contigs containing the rRNA sequences
+print('\nHeader of draft genome file must only contain acc. no matching coordinate file Fx:\n\n>AGQU01000001.1\nATCTGTATGTA...\n')
+seq_in = str(input('Enter draft genome filename with extension: '))
+seq_file = open(seq_in,'r')
+seq =''
+seq_dict = dict()
+for line in seq_file:
+    if line.startswith('>'):
+        if seq != '':
+            seq_dict[headline] = seq
+        seq =''
+        headline =line[1:-1]
+    else:
+        seq +=line.rstrip()
+if seq != '':
+    seq_dict[headline]=seq
+seq_file.close()
+
+o = str(input('Enter a name for output contig file with extension: '))
+outfile = open(o,'w')
+for i in file_dict:
+    if i in seq_dict:
+        outfile.write(i+'\n'+seq_dict[i]+'\n')
+outfile.close()
+
+cds_file = str(input('Enter a name for output CDS sequence file with extension: '))
+cds = open(cds_file ,'w')
+temp =''
+tempo =''
+for j in file_dict: 
+    if j in seq_dict:
+        start = int(file_dict[j]['start'])-1
+        stop = int(file_dict[j]['stop']) # python does not take into consideration upper limit
+        temp += seq_dict[j]
+        tempo += temp[start:stop]
+        cds.write('>'+j+' start='+str(start+1)+' stop='+str(stop)+' '+file_dict[j]['']+'\n')
+        for i in range(0,len(tempo)-1,70):     
+            cds.write(tempo[i:i+70]+'\n')
+        temp = ''
+        tempo =''
+    else:
+        print(file_dict)
+        k = j[1:]
+        start = int(file_dict[j]['start'])-1
+        stop = int(file_dict[j]['stop'])
+        print(start,stop)
+        temp += seq_dict[k]
+        tempo += temp[start:stop]
+        cds.write('>'+k+' start='+str(start+1)+' stop='+str(stop)+' '+file_dict[j]['']+'\n')
+        for i in range(0,len(tempo)-1,70):     
+            cds.write(tempo[i:i+70]+'\n')
+        temp = ''
+        tempo =''
+cds.close()
+```
+#### Phylo_tree.py
+```{python, python.reticulate = FALSE, echo=TRUE, eval=FALSE}
+
+#!/usr/bin/env python3
+
+from Bio import AlignIO
+from Bio import Phylo
+from Bio.Phylo.TreeConstruction import DistanceCalculator 
+from Bio.Phylo.TreeConstruction import DistanceTreeConstructor
+from phytreeviz import TreeViz
+
+infile = open('multiple_sequence.aln','r')
+aligned = AlignIO.read(infile,'clustal')
+
+calculator = DistanceCalculator('identity')
+distance_matrix = calculator.get_distance(aligned)
+
+constructor = DistanceTreeConstructor(calculator,'nj')
+tree = constructor.build_tree(aligned)
+
+Phylo.draw_ascii(tree)
+Phylo.write(tree, "tree.nwk", "newick")
+
+treefile = Phylo.read("tree.nwk","newick")
+
+tv = TreeViz(treefile, align_leaf_label=True)
+tv.show_scale_axis()
+
+group = ["ATCC_19977", "MAB_4395"]
+
+tv.highlight(group, "orange")
+tv.annotate(group, "Group")
+
+tv.marker(group, marker="s", color="blue", descendent=True)
+tv.marker("AGQU01000001.1", color="red")
+
+tv.savefig("tree.png", dpi=300)
+
+infile.close()
+```
+
+## R
+#### Differential Gene Expression
+#### Libraries
+
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE, results="hide"}
+library(DESeq2)
+library(tidyverse)
+library(ComplexHeatmap)
+library(ggplot2)
+library(ggrepel)
+library(cluster)
+library(ashr)
+library(formatR)
+library(EnhancedVolcano)
+library(clusterProfiler)
+library(enrichplot)
+library(data.table)
+```
+
+#### Read Input
+
+```{r, echo=TRUE, eval=FALSE}
+samples <- read.csv("counts.csv", header=T, row.names=1, sep=",",check.names = FALSE)
+proteinkey <- read.delim("protein.txt", header = FALSE)
+KOkey <- read.delim("ID_KO.txt", header = FALSE)
+col <- read.table("condition.txt", header=T, row.names=1, sep="\t", stringsAsFactors = TRUE)
+```
+
+#### Set Reference
+
+```{r, echo=TRUE, eval=FALSE, results='hide'}
+col$Condition <- relevel(col$Condition, ref="Control") 
+model.matrix(~Condition,data=col)
+```
+
+#### Create Design Matrix
+
+```{r, echo=TRUE, eval=FALSE, results='hide'}
+dds <- DESeqDataSetFromMatrix(samples,col,~Condition)
+dds
+```
+
+#### PCA
+
+```{r, eval=FALSE, echo=TRUE}
+w <- rlog(dds, blind=TRUE)
+png("PCA_Scatter.png", res=100, width =700 , height =600)
+
+z <- plotPCA(w,intgroup=c("Condition"))+ stat_ellipse()
+z + ggtitle("Batch Effect Verification of Replicates") + geom_label_repel(aes(label = name), size=8) + theme(legend.position = "None", panel.background = element_rect(fill = '#eaf1f8'), plot.margin = unit(c(2, 2, 1, 1), "cm"))
+```
+
+#### Run DESeq2
+
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+ddsDE <- DESeq(dds)
+resultsNames(ddsDE)
+```
+
+
+#### Log2FoldChange
+
+```{r, echo=TRUE, eval=FALSE}
+Condition_Erythromycin_vs_Control <- results(ddsDE, contrast=c("Condition",  "Erythromycin", "Control"), independentFiltering=TRUE, alpha=0.05, pAdjustMethod="BH")
+
+Condition_Kanamycin_vs_Control <- results(ddsDE, contrast=c("Condition", "Kanamycin", "Control"), independentFiltering=TRUE, alpha=0.05, pAdjustMethod="BH")
+```
+
+```{r, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+Condition_Erythromycin_vs_Control <- lfcShrink(ddsDE, contrast=c("Condition",  "Erythromycin", "Control"), res=Condition_Erythromycin_vs_Control, type="ashr")
+
+Condition_Kanamycin_vs_Control <- lfcShrink(ddsDE, contrast=c("Condition",  "Kanamycin", "Control"), res=Condition_Kanamycin_vs_Control, type="ashr")
+```
+
+#### Append Gene Name and KO Annotation
+
+```{r, echo=TRUE, eval=FALSE, results='hide', warning=FALSE, message=FALSE}
+proteinkey_df <- as.data.frame(proteinkey)
+samples$Gene_Name <- proteinkey_df$V1
+samples$KO_annot <- KOkey$V2
+#write.table(rownames(samples),"samples.csv", sep=",")
+```
+
+
+#### Data Sorting/ Tidying
+
+```{r, echo=TRUE, eval=FALSE, results='hide', warning=FALSE, message=FALSE}
+Condition_Erythromycin_vs_Control_df <- as.data.frame(Condition_Erythromycin_vs_Control)
+Condition_Erythromycin_vs_Control_df$Gene_Name <- proteinkey_df$V1
+Condition_Erythromycin_vs_Control_df$KO_annot <- KOkey$V2
+
+Condition_Kanamycin_vs_Control_df <- as.data.frame(Condition_Kanamycin_vs_Control)
+Condition_Kanamycin_vs_Control_df$Gene_Name <- proteinkey_df$V1
+Condition_Kanamycin_vs_Control_df$KO_annot <- KOkey$V2
+```
+
+```{r, echo=TRUE, eval=FALSE, results='hide'}
+Ordered_Erythromycin_vs_Control <- Condition_Erythromycin_vs_Control_df[order(Condition_Erythromycin_vs_Control_df$padj,-Condition_Erythromycin_vs_Control_df$log2FoldChange),]
+Ordered_Erythromycin_vs_Control <- na.omit(Ordered_Erythromycin_vs_Control)
+
+Ordered_Kanamycin_vs_Control <- Condition_Kanamycin_vs_Control_df[order(Condition_Kanamycin_vs_Control_df$padj,-Condition_Kanamycin_vs_Control_df$log2FoldChange),]
+Ordered_Kanamycin_vs_Control <- na.omit(Ordered_Kanamycin_vs_Control)
+```
+
+#### Pathway Analysis
+
+```{r, echo=TRUE, results='hide', eval=FALSE}
+KOkey$V2 <- gsub( "ko:", "", as.character(KOkey$V2))
+kegg <- data.table(KOkey)
+kegg <- kegg[, list(V2 = unlist(strsplit(V2 , ","))), by = V1] 
+kegg_final <- kegg[,c(2,1)]
+
+protein_ids <- rownames(Ordered_Erythromycin_vs_Control)
+protein_ids <- as.data.frame(protein_ids)
+
+keep <- subset(kegg_final,protein_ids  %in% protein_ids)
+
+enr_results <- enrichKEGG(keep$V2, organism='ko', minGSSize = 1, pvalueCutoff = 0.05, qvalueCutoff = 0.05)
+png("KO_dotplot.png", width = 500, height = 900)
+dotplot(enr_results, showCategory=20)
+dev.off()
+```
+
+#### Gene Selection 
+
+```{r, echo=TRUE, eval=FALSE, results='hide', tidy=TRUE, tidy.opts=list(width.cutoff=80)}
+check_genes<-Ordered_Erythromycin_vs_Control[grepl("High-affinity branched-chain amino acid transport|Aminoglycoside 2'-N-acetyltransferase|putative multidrug-efflux transporter",Ordered_Erythromycin_vs_Control$Gene_Name),]
+```
+
+#### Volcano Plots
+
+```{r, fig.height=7, eval=FALSE, echo=TRUE, warning=FALSE, message=FALSE, results='hide'}
+png("Ordered_Kanamycin_vs_Control.png", width = 1000, height = 900)
+  EnhancedVolcano(Ordered_Kanamycin_vs_Control,
+    lab = Ordered_Kanamycin_vs_Control$Gene_Name,
+    title = "Kanamycin_vs_Control",
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff =0.05,
+    FCcutoff = 1,
+    pointSize = 3.0,
+    labSize = 6.0,
+    drawConnectors = TRUE,
+    widthConnectors = 0.75,
+    boxedLabels = TRUE,
+    colConnectors = 'grey',
+    col = c("#94afbb","#e78f8e","#a6c47c", "#c65390"),
+    colAlpha = 1,
+    gridlines.major = FALSE,
+    gridlines.minor = FALSE,
+    typeConnectors="open",
+    cutoffLineCol="grey") 
+dev.off()
+```
+
+#### Heatmap Gene ID 
+
+```{r, echo=TRUE, eval=FALSE}
+log2cutoff <- 3
+qvaluecutoff <- 0.05
+
+sigGenes <- unique(c(rownames(subset(Condition_Erythromycin_vs_Control, padj<=qvaluecutoff & abs(log2FoldChange)>=log2cutoff)), rownames(subset(Condition_Kanamycin_vs_Control, padj<=qvaluecutoff & abs(log2FoldChange)>=log2cutoff))))
+
+```
+
+```{r, echo=TRUE, eval=FALSE}
+v <- rlog(ddsDE)
+heat <- assay(v)[sigGenes,]
+```
+
+```{r, echo=TRUE, eval=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+png("Heatmap.png", res=100, width =500 , height =450) #check here
+col_fun = colorRamp2(c(5,10,15), c("#a2c8c8","white", "#ff5a5a"))
+col_fun(seq(3,-3))
+ht1 <- Heatmap(heat, 
+               row_title = "Genes", 
+               row_title_gp=gpar(fontface="bold", fontsize=8),
+               column_title = "MAB (DGE LFC=3; padj=0.05)", 
+               column_title_gp = gpar(fontface="bold", fontsize=8), 
+               column_labels=colnames(heat), 
+               row_labels=rownames(heat), 
+               col=col_fun, 
+               column_dend_height = unit(2,"cm"), 
+               row_dend_width = unit(2,"cm"), 
+               heatmap_legend_param = list(title="Gene Expression Levels",
+               title_gp = gpar(fontface="bold",fontsize=8),
+               at = c(5, 10, 15),
+               labels = c("Low", "Medium", "High"), 
+               labels_gp = gpar(fontsize=8),
+               direction = "horizontal", 
+               title_position = "topcenter"), 
+               clustering_distance_rows = "euclidean", 
+               column_km=2, 
+               column_names_rot = 45,
+               column_names_gp = gpar(fontsize=7),
+               row_names_gp = gpar(fontsize=7),
+               row_names_max_width = unit(15.2, "cm"),
+               width = ncol(heat)*unit(4, "mm"), 
+               height = nrow(heat)*unit(3, "mm"))
+draw(ht1, heatmap_legend_side = "bottom")
+```
